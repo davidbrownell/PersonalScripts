@@ -19,7 +19,7 @@ Collection of scripts that I use to maintain my local system.
 ## Overview
 | Script | Description |
 | --- | --- |
-
+| `CreateSelfSignedCert.py` | Creates a self-signed SSL certificate. |
 
 ### How to use PersonalScripts
 Activate the environment, run the scripts.
