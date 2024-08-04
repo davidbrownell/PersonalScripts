@@ -1,0 +1,9 @@
+post_generation_actions.html
+
+Activate*.cmd
+Activate*.sh
+Deactivate*.cmd
+Deactivate*.sh
+
+**/__pycache__/**
+**/Generated/**
