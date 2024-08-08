@@ -19,6 +19,7 @@ Collection of scripts that I use to maintain my local system.
 ## Overview
 | Script | Description |
 | --- | --- |
+| `BackupOneDrive.py` | Archives pictures and videos from [OneDrive](https://https://onedrive.live.com/) to your local machine. |
 | `CreateSelfSignedCert.py` | Creates a self-signed SSL certificate. |
 
 ### How to use PersonalScripts
