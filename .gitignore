@@ -8,4 +8,4 @@ Deactivate*.sh
 **/__pycache__/**
 **/Generated/**
 
-**/.vscode/**
+**/.vscode/.**
