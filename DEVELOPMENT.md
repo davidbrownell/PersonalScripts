@@ -1,6 +1,7 @@
 # Local Development
 
 ## Enlistment
+<!-- [BEGIN] Enlistment -->
 Enlistment in this repository involves these steps.
 
 <table>
@@ -68,6 +69,7 @@ Enlistment in this repository involves these steps.
     </td>
 </tr>
 </table>
+<!-- [END] Enlistment -->
 
 ## Development Activities
 No additional activities are required.
