@@ -568,7 +568,7 @@ def _GetFileInfos(
             with files_dm.Nested(
                 f"Searching in '{display_name}'...",
                 lambda: inflect.no("file", num_files),
-            ):
+            ) as search_dm:
                 response = requests.get(url, headers=get_headers_func())
 
                 response.raise_for_status()
@@ -583,6 +583,8 @@ def _GetFileInfos(
                             ),
                         )
                     elif "file" in item:
+                        search_dm.WriteVerbose(f"{num_files + 1}) {item['name']}\n")
+
                         files.append(item)
                         num_files += 1
                     else:
