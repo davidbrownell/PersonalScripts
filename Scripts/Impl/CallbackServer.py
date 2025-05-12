@@ -13,9 +13,7 @@
 # ----------------------------------------------------------------------
 """Contains the CallbackServer object"""
 
-import os
 import ssl
-import sys
 import textwrap
 import threading
 
@@ -118,11 +116,7 @@ class CallbackServer:
                         parent_results[result_name] = None
                         is_successful = False
 
-                message_template = (
-                    success_message_template
-                    if is_successful
-                    else failure_message_template
-                )
+                message_template = success_message_template if is_successful else failure_message_template
 
                 self.send_response(200)
                 self.end_headers()

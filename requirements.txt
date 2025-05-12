@@ -1,2 +1,0 @@
-dbrownell_Common
-requests-oauthlib~=2.0

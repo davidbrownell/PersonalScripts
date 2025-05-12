@@ -9,3 +9,7 @@ Deactivate*.sh
 **/Generated/**
 
 **/.vscode/.**
+.coverage
+.DS_Store
+minisign_key.pri
+post_generation_instructions.html
