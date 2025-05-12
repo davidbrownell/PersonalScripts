@@ -121,33 +121,21 @@ def Backup(
 
         errors: list[str] = []
 
-        redirect_url = os.getenv(
-            "DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_REDIRECT_URI"
-        )
+        redirect_url = os.getenv("DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_REDIRECT_URI")
         if redirect_url is None:
-            errors.append(
-                "DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_REDIRECT_URI"
-            )
+            errors.append("DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_REDIRECT_URI")
 
-        client_id = os.getenv(
-            "DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_CLIENT_ID"
-        )
+        client_id = os.getenv("DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_CLIENT_ID")
         if client_id is None:
-            errors.append(
-                "DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_CLIENT_ID"
-            )
+            errors.append("DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_CLIENT_ID")
 
         client_secret_str = os.getenv(
             "DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_CLIENT_SECRET"
         )
         if client_secret_str is None:
-            errors.append(
-                "DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_CLIENT_SECRET"
-            )
+            errors.append("DEVELOPMENT_ENVIRONMENT_UTILITIES_MICROSOFT_LIVE_CONNECT_CLIENT_SECRET")
 
-        ssl_pem_filename_str = os.getenv(
-            "DEVELOPMENT_ENVIRONMENT_UTILITIES_SSL_PEM_FILENAME"
-        )
+        ssl_pem_filename_str = os.getenv("DEVELOPMENT_ENVIRONMENT_UTILITIES_SSL_PEM_FILENAME")
         if ssl_pem_filename_str is None:
             errors.append("DEVELOPMENT_ENVIRONMENT_UTILITIES_SSL_PEM_FILENAME")
 
@@ -350,10 +338,7 @@ def RemoveDuplicates(
         all_hashes = ExecuteTasks.TransformTasksEx(
             dm,
             "Calculating hash values...",
-            [
-                ExecuteTasks.TaskData(str(filename), index)
-                for index, filename in enumerate(all_filenames)
-            ],
+            [ExecuteTasks.TaskData(str(filename), index) for index, filename in enumerate(all_filenames)],
             PrepareTask,
             max_num_threads=None if ssd else 1,
         )
@@ -444,9 +429,7 @@ class _Token:
             ],
         )
 
-        data_filename = (
-            PathEx.GetUserDirectory() / f"{expected_username} - BackupOneDrive"
-        )
+        data_filename = PathEx.GetUserDirectory() / f"{expected_username} - BackupOneDrive"
 
         if data_filename.is_file() and not force_oauth:
             refresh_token = data_filename.read_text(encoding="utf-8").strip()
@@ -505,10 +488,7 @@ class _Token:
 
     # ----------------------------------------------------------------------
     def GetAccessToken(self) -> str:
-        if (
-            self._access_expires is None
-            or datetime.datetime.now(datetime.UTC) >= self._access_expires
-        ):
+        if self._access_expires is None or datetime.datetime.now(datetime.UTC) >= self._access_expires:
             response = self._oauth.refresh_token(
                 self.__class__.TOKEN_URL,
                 refresh_token=self.refresh_token,
@@ -527,9 +507,7 @@ class _Token:
             # the original value to decrease the likelihood that we will accidentally use an
             # expired token.
             expires_in = max(5, int(float(expires_in) * 0.90))
-            expires_in = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
-                seconds=expires_in
-            )
+            expires_in = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=expires_in)
 
             self._access_token = access_token
             self._access_expires = expires_in
@@ -661,14 +639,10 @@ def _GetFilesToProcess(
                     break
 
             if file_processor is None:
-                organize_dm.WriteError(
-                    f"The file '{file_info['name']}' is not a recognized file type.\n"
-                )
+                organize_dm.WriteError(f"The file '{file_info['name']}' is not a recognized file type.\n")
                 continue
 
-            creation_date = datetime.datetime.fromisoformat(
-                file_info["createdDateTime"]
-            )
+            creation_date = datetime.datetime.fromisoformat(file_info["createdDateTime"])
 
             dest = (
                 file_processor.output_dir_template.parent
@@ -776,10 +750,7 @@ def _ProcessFiles(
     ExecuteTasks.TransformTasksEx(
         dm,
         "Processing files...",
-        [
-            ExecuteTasks.TaskData(ftp[0]["name"], index)
-            for index, ftp in enumerate(files_to_process)
-        ],
+        [ExecuteTasks.TaskData(ftp[0]["name"], index) for index, ftp in enumerate(files_to_process)],
         Prepare,
     )
 

@@ -1,22 +1,21 @@
 # Changes here will be overwritten by Copier; DO NOT MODIFY THIS FILE DIRECTLY!
 #
 # This file was generated using copier (https://copier.readthedocs.io/) with the
-# template copier-ProjectScaffolding (https://github.com/gt-sse-center/copier-ProjectScaffolding).
+# template copier-UvScaffolding (https://github.com/gt-sse-center/copier-UvScaffolding).
 # Additional information (including instructions on how to use this template with copier) is
-# available at https://github.com/gt-sse-center/copier-ProjectScaffolding.
+# available at https://github.com/gt-sse-center/copier-UvScaffolding.
 #
 
-_commit: v0.2.10
-_src_path: https://github.com/gt-sse-center/copier-ProjectScaffolding
+_commit: v0.2.0
+_src_path: .
 author_email: github@DavidBrownell.com
 author_name: David Brownell
-documentation_license: MIT
-generate_docs: true
+coverage_badge_gist_id: ''
 github_host: https://github.com
 github_repo_name: PersonalScripts
 github_username: davidbrownell
-hosting_platform: GitHub
-project_description: Collection of scripts that I use to maintain my local system.
+license: MIT
 project_name: PersonalScripts
-project_type: PythonExecutionEnvironment
-repository_tool: git
+python_package_name: PersonalScripts
+python_versions: 3.10, 3.11, 3.12, 3.13
+sign_artifacts_question: false

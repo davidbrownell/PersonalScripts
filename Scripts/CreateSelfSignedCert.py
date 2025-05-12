@@ -49,9 +49,7 @@ app = typer.Typer(
 def EntryPoint(
     output_filename: Annotated[
         Path,
-        typer.Argument(
-            help="Output filename (e.g. my_cert.pem)", dir_okay=False, resolve_path=True
-        ),
+        typer.Argument(help="Output filename (e.g. my_cert.pem)", dir_okay=False, resolve_path=True),
     ],
     hostname: Annotated[
         str,
@@ -71,9 +69,7 @@ def EntryPoint(
     ],
     expiry_days: Annotated[
         int,
-        typer.Option(
-            "--expiry-days", help="The number of days the certificate is valid.", min=1
-        ),
+        typer.Option("--expiry-days", help="The number of days the certificate is valid.", min=1),
     ] = 3650,
     key_size: Annotated[
         int,
