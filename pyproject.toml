@@ -11,6 +11,7 @@ dependencies = [
     "dbrownell-common>=0.14.7",
     "requests>=2.32.3",
     "requests-oauth>=0.4.1",
+    "requests-oauthlib>=2.0.0",
 ]
 
 [tool.pytest.ini_options]
