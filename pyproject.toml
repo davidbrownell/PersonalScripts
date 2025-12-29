@@ -8,10 +8,12 @@ authors = [
 ]
 requires-python = ">= 3.10"
 dependencies = [
+    "attrs>=25.4.0",
     "dbrownell-common>=0.14.7",
     "requests>=2.32.3",
     "requests-oauth>=0.4.1",
     "requests-oauthlib>=2.0.0",
+    "typer>=0.21.0",
 ]
 
 [tool.pytest.ini_options]
