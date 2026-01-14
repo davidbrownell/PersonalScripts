@@ -8,7 +8,7 @@ Deactivate*.sh
 **/__pycache__/**
 **/Generated/**
 
-**/.vscode/.**
+.vscode/
 .coverage
 .DS_Store
 minisign_key.pri
