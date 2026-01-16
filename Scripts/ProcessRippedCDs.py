@@ -1,4 +1,4 @@
-# noqa: D100
+# noqa: INP001
 import os
 import re
 import shutil
@@ -11,9 +11,9 @@ from typing import Annotated, cast, Protocol, Self
 import typer
 
 from attr import dataclass
-from dbrownell_Common.InflectEx import inflect  # type: ignore[import-untyped]
-from dbrownell_Common.Streams.DoneManager import DoneManager, Flags as DoneManagerFlags  # type: ignore[import-untyped]
-from dbrownell_Common import SubprocessEx  # type: ignore[import-untyped]
+from dbrownell_Common.InflectEx import inflect
+from dbrownell_Common.Streams.DoneManager import DoneManager, Flags as DoneManagerFlags
+from dbrownell_Common import SubprocessEx
 from typer.core import TyperGroup
 
 # spell-checker: words flac, archiver, ALBUMARTIST, TOTALTRACKS, TRACKNUMBER
@@ -23,7 +23,6 @@ from typer.core import TyperGroup
 class NaturalOrderGrouper(TyperGroup):
     """Ensure commands are listed in the order defined."""
 
-    # pylint: disable=missing-class-docstring
     # ----------------------------------------------------------------------
     def list_commands(self, *args, **kwargs) -> list[str]:  # noqa: ARG002, D102
         return list(self.commands.keys())

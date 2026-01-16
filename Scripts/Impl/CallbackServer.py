@@ -11,7 +11,7 @@
 # |  Distributed under the MIT License.
 # |
 # ----------------------------------------------------------------------
-"""Contains the CallbackServer object"""
+"""Contains the CallbackServer object."""
 
 import ssl
 import textwrap
@@ -24,8 +24,9 @@ from urllib import parse
 
 # ----------------------------------------------------------------------
 class CallbackServer:
-    """\
-    Creates a HTTP server that is active until a specific url is served. At that point, an event is
+    """Create a HTTP server that is active until a specific url is served.
+
+    At that point, an event is
     fired that indicates that the server received the desired request. This can be used as the
     server for an OAuth callback, where the server is active until that callback is invoked.
     """
@@ -89,7 +90,7 @@ class CallbackServer:
         elif callback_result_name_or_names is None:
             callback_result_names = []
         else:
-            assert False, callback_result_name_or_names  # pragma: no cover
+            assert False, callback_result_name_or_names  # noqa: B011, PT015 # pragma: no cover
 
         del callback_result_name_or_names
 
@@ -147,7 +148,7 @@ class CallbackServer:
         self._httpd.timeout = 1  # second
 
         # ----------------------------------------------------------------------
-        def ThreadProc():
+        def ThreadProc() -> None:
             while not self._quit_event.is_set():
                 self._httpd.handle_request()
 
@@ -161,8 +162,7 @@ class CallbackServer:
         self,
         timeout_seconds: int = 120,
     ) -> str | dict[str, str | None] | None:
-        """\
-        Wait for results.
+        """Wait for results.
 
         Return value will be:
             - str if callback_result_name_or_names is a str
@@ -172,7 +172,7 @@ class CallbackServer:
 
         if not self._quit_event.wait(timeout_seconds):
             self._quit_event.set()
-            raise Exception("timeout")
+            raise Exception("timeout")  # noqa: EM101
 
         if len(self._results) == 1:
             return next(iter(self._results.values()))

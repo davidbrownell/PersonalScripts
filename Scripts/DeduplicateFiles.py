@@ -1,10 +1,11 @@
-# noqa: D100
+# noqa: INP001
 import hashlib
 import os
 import textwrap
 
 from pathlib import Path
-from typing import Annotated, Callable
+from typing import Annotated
+from collections.abc import Callable
 
 import typer
 
@@ -33,20 +34,20 @@ app = typer.Typer(
 
 # ----------------------------------------------------------------------
 @app.command("EntryPoint", no_args_is_help=True)
-def EntryPoint(
+def EntryPoint(  # noqa: C901
     input_directory: Annotated[
         Path,
         typer.Argument(
             exists=True, file_okay=False, resolve_path=True, help="Directory to search for duplicates."
         ),
     ],
-    clean: Annotated[
+    clean: Annotated[  # noqa: FBT002
         bool,
         typer.Option(
             "--clean", help="Remove duplicate filenames (the first filename encountered will be preserved)."
         ),
     ] = False,
-    ssd: Annotated[
+    ssd: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--ssd", help="Hashes will be calculated in parallel for solid state drives."),
     ] = False,
@@ -95,7 +96,7 @@ def EntryPoint(
             # ----------------------------------------------------------------------
             def CalculateHash(
                 context: Path,
-                on_simple_status_func: Callable[[str], None],
+                on_simple_status_func: Callable[[str], None],  # noqa: ARG001
             ) -> tuple[
                 int,
                 ExecuteTasks.TransformTasksExTypes.TransformFuncType,
@@ -147,7 +148,7 @@ def EntryPoint(
 
             organized_files: dict[tuple[str, str], list[Path]] = {}
 
-            for filename, hash_value in zip(all_filenames, hash_values):
+            for filename, hash_value in zip(all_filenames, hash_values, strict=True):
                 assert isinstance(filename, Path), filename
                 assert isinstance(hash_value, str), hash_value
 
@@ -159,7 +160,7 @@ def EntryPoint(
             with hash_dm.Nested("Identifying duplicates"):
                 for key, filenames in organized_files.items():
                     if len(filenames) != 1:
-                        duplicated_files[key] = filenames
+                        duplicated_files[key] = filenames  # noqa: PERF403
 
         if not duplicated_files:
             return

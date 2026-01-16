@@ -1,16 +1,17 @@
-# noqa: D100
-import os
+# noqa: INP001
 import re
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Generator
+from typing import Annotated
 
 import typer
 import yaml
 
 from dbrownell_Common.Streams.DoneManager import DoneManager, Flags as DoneManagerFlags
 from typer.core import TyperGroup
+
+from Impl.RepositoryUtils import FindRepositoryRoots
 
 
 # ----------------------------------------------------------------------
@@ -45,7 +46,12 @@ app = typer.Typer(
 def EntryPoint(
     directory: Annotated[
         Path,
-        typer.Argument(help="Root directory to search for copier targets."),
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            resolve_path=True,
+            help="Root directory to search for copier targets.",
+        ),
     ],
     template_filename: Annotated[
         str,
@@ -65,18 +71,11 @@ def EntryPoint(
     with DoneManager.CreateCommandLine(
         flags=DoneManagerFlags.Create(verbose=verbose, debug=debug),
     ) as dm:
-        # Resolve to absolute path for consistent handling
-        directory = directory.resolve()
-
-        if not directory.is_dir():
-            dm.WriteError(f"'{directory}' is not a valid directory.\n")
-            return
-
         # Find all copier targets
         targets: list[CopierTarget] = []
 
         with dm.Nested("Searching for copier targets...") as search_dm:
-            for repo_root in _FindRepositoryRoots(directory):
+            for repo_root in FindRepositoryRoots(directory):
                 copier_file = repo_root / template_filename
 
                 if not copier_file.is_file():
@@ -98,18 +97,6 @@ def EntryPoint(
 
 # ----------------------------------------------------------------------
 # ----------------------------------------------------------------------
-# ----------------------------------------------------------------------
-def _FindRepositoryRoots(directory: Path) -> Generator[Path, None, None]:
-    """Find all git repository roots under the given directory."""
-
-    for root, dirs, _files in os.walk(directory, followlinks=False):
-        root_path = Path(root)
-
-        if ".git" in dirs:
-            # This is a repository root
-            yield root_path
-            # Don't descend into this repository
-            dirs.clear()
 
 
 # ----------------------------------------------------------------------
@@ -159,9 +146,9 @@ def _DisplayTable(targets: list[CopierTarget], dm: DoneManager) -> None:
     origin_header = "Template Origin"
     version_header = "Version"
 
-    path_width = max(len(path_header), max(len(str(t.path)) for t in targets))
-    origin_width = max(len(origin_header), max(len(t.origin) for t in targets))
-    version_width = max(len(version_header), max(len(t.version) for t in targets))
+    path_width = max(len(path_header), max(len(str(t.path)) for t in targets))  # noqa: PLW3301
+    origin_width = max(len(origin_header), max(len(t.origin) for t in targets))  # noqa: PLW3301
+    version_width = max(len(version_header), max(len(t.version) for t in targets))  # noqa: PLW3301
 
     # Build table
     separator = f"+{'-' * (path_width + 2)}+{'-' * (origin_width + 2)}+{'-' * (version_width + 2)}+"
@@ -173,7 +160,7 @@ def _DisplayTable(targets: list[CopierTarget], dm: DoneManager) -> None:
     dm.WriteLine(separator)
 
     for target in targets:
-        row = f"| {str(target.path):<{path_width}} | {target.origin:<{origin_width}} | {target.version:<{version_width}} |"
+        row = f"| {target.path!s:<{path_width}} | {target.origin:<{origin_width}} | {target.version:<{version_width}} |"
         dm.WriteLine(row)
 
     dm.WriteLine(separator)

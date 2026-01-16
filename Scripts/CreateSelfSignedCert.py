@@ -1,3 +1,4 @@
+# noqa: INP001
 # ----------------------------------------------------------------------
 # |
 # |  CreateSelfSignedCert.py
@@ -27,11 +28,10 @@ from typer.core import TyperGroup
 
 
 # ----------------------------------------------------------------------
-class NaturalOrderGrouper(TyperGroup):
-    # pylint: disable=missing-class-docstring
+class NaturalOrderGrouper(TyperGroup):  # noqa: D101
     # ----------------------------------------------------------------------
-    def list_commands(self, *args, **kwargs):  # pylint: disable=unused-argument
-        return self.commands.keys()
+    def list_commands(self, *args, **kwargs) -> list[str]:  # noqa: ARG002, D102
+        return list(self.commands.keys())
 
 
 # ----------------------------------------------------------------------
@@ -46,7 +46,7 @@ app = typer.Typer(
 
 # ----------------------------------------------------------------------
 @app.command("EntryPoint", help=__doc__, no_args_is_help=True)
-def EntryPoint(
+def EntryPoint(  # noqa: D103
     output_filename: Annotated[
         Path,
         typer.Argument(help="Output filename (e.g. my_cert.pem)", dir_okay=False, resolve_path=True),
@@ -75,11 +75,11 @@ def EntryPoint(
         int,
         typer.Option("--key-size", help="The size of the key to generate.", min=2048),
     ] = 4096,
-    verbose: Annotated[
+    verbose: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--verbose", help="Write verbose information to the terminal."),
     ] = False,
-    debug: Annotated[
+    debug: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--debug", help="Write debug information to the terminal."),
     ] = False,
@@ -101,19 +101,21 @@ def EntryPoint(
                 if generate_dm.result != 0:
                     return
 
-        with ExitStack(
-            key_filename.unlink,
-            cert_filename.unlink,
+        with (
+            ExitStack(
+                key_filename.unlink,
+                cert_filename.unlink,
+            ),
+            dm.Nested(f"Writing '{output_filename}'..."),
         ):
-            with dm.Nested(f"Writing '{output_filename}'..."):
-                key_content = key_filename.read_text(encoding="utf-8")
-                cert_content = cert_filename.read_text(encoding="utf-8")
+            key_content = key_filename.read_text(encoding="utf-8")
+            cert_content = cert_filename.read_text(encoding="utf-8")
 
-                output_filename.parent.mkdir(parents=True, exist_ok=True)
+            output_filename.parent.mkdir(parents=True, exist_ok=True)
 
-                with output_filename.open("w", encoding="utf-8") as f:
-                    f.write(cert_content)
-                    f.write(key_content)
+            with output_filename.open("w", encoding="utf-8") as f:
+                f.write(cert_content)
+                f.write(key_content)
 
 
 # ----------------------------------------------------------------------
