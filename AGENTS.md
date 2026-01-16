@@ -1,3 +1,5 @@
+<!-- Version: 0.1.0 -->
+
 # General
 
 # Python
@@ -6,7 +8,7 @@
 
 - Always introduce a single blank line between a function's docstring and the first statement in the function. Docstrings should not contain information about arguments, as the argument names should be descriptive enough to communicate how they are used in the function and when the function is invoked.
 
-- All function and class definitions must be prefixed with "# ----------------------------------------------------------------------".
+- All function and class definitions must be prefixed with "# ----------------------------------------------------------------------". This prefix should not be placed at the beginning of the file.
 
 - Code should be organized by public types, public functions, private types, and private functions. Do not mix public and private types and functions. Class types and methods should be organized in the same way.
 

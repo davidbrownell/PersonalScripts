@@ -1,3 +1,4 @@
+# noqa: INP001
 # ----------------------------------------------------------------------
 # |
 # |  BackupOneDrive.py
@@ -24,7 +25,8 @@ import webbrowser
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Callable, Optional
+from typing import Annotated
+from collections.abc import Callable
 from urllib.parse import urlparse, parse_qs
 
 import requests
@@ -41,11 +43,10 @@ from Impl.CallbackServer import CallbackServer
 
 
 # ----------------------------------------------------------------------
-class NaturalOrderGrouper(TyperGroup):
-    # pylint: disable=missing-class-docstring
+class NaturalOrderGrouper(TyperGroup):  # noqa: D101
     # ----------------------------------------------------------------------
-    def list_commands(self, *args, **kwargs):  # pylint: disable=unused-argument
-        return self.commands.keys()
+    def list_commands(self, *args, **kwargs) -> list[str]:  # noqa: ARG002, D102
+        return list(self.commands.keys())
 
 
 # ----------------------------------------------------------------------
@@ -60,7 +61,7 @@ app = typer.Typer(
 
 # ----------------------------------------------------------------------
 @app.command("Backup", help=__doc__, no_args_is_help=True)
-def Backup(
+def Backup(  # noqa: D103, PLR0915
     name: Annotated[
         str,
         typer.Argument(help="Output subdirectory name for multi-user support."),
@@ -76,18 +77,18 @@ def Backup(
         typer.Argument(help="Output directory.", file_okay=False, resolve_path=True),
     ],
     expected_email: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--expected-email",
             help="The expected email address; produce an error if the actual value is not a match to this value.",
         ),
     ] = None,
     local_pictures_subdir: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--local-pictures-subdir", help="Output subdir for pictures."),
     ] = "My Pictures",
     local_videos_subdir: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--local-videos-subdir", help="Output subdir for videos."),
     ] = "My Videos",
     output_dir_template: Annotated[
@@ -97,15 +98,15 @@ def Backup(
             help="Template to use when creating output directories for content.",
         ),
     ] = f"{{year}}{os.path.sep}{{month:02d}}{os.path.sep}{{year}}.{{month:02d}}.{{day:02d}} - {{name}}",
-    force_oauth: Annotated[
+    force_oauth: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--force-oauth", help="Always execute the oauth workflow."),
     ] = False,
-    verbose: Annotated[
+    verbose: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--verbose", help="Write verbose information to the terminal."),
     ] = False,
-    debug: Annotated[
+    debug: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--debug", help="Write debug information to the terminal."),
     ] = False,
@@ -176,10 +177,7 @@ def Backup(
         with dm.Nested("Accessing OneDrive..."):
             parts = redirect_url.split(":")
 
-            if len(parts) == 1:
-                callback_port = 80
-            else:
-                callback_port = int(parts[-1])
+            callback_port = 80 if len(parts) == 1 else int(parts[-1])
 
             token = _Token.Create(
                 name,
@@ -203,7 +201,7 @@ def Backup(
 
         # Verify the username
         with dm.Nested("Verifying profile...") as verify_dm:
-            response = requests.get(
+            response = requests.get(  # noqa: S113
                 "https://graph.microsoft.com/v1.0/me",
                 headers=GetHeaders(),
             )
@@ -262,22 +260,22 @@ def RemoveDuplicates(
             resolve_path=True,
         ),
     ],
-    ssd: Annotated[
+    ssd: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--ssd", help="Add this flag to increase performance on SSDs."),
     ] = False,
-    dry_run: Annotated[
+    dry_run: Annotated[  # noqa: FBT002
         bool,
         typer.Option(
             "--dry-run",
             help="Do not remove any files, only display what would be removed.",
         ),
     ] = False,
-    verbose: Annotated[
+    verbose: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--verbose", help="Write verbose information to the terminal."),
     ] = False,
-    debug: Annotated[
+    debug: Annotated[  # noqa: FBT002
         bool,
         typer.Option("--debug", help="Write debug information to the terminal."),
     ] = False,
@@ -301,8 +299,8 @@ def RemoveDuplicates(
         # Calculate the hash values
         # ----------------------------------------------------------------------
         def PrepareTask(
-            context: Any,
-            on_simple_status_func: Callable[[str], None],
+            context: int,
+            on_simple_status_func: Callable[[str], None],  # noqa: ARG001
         ) -> tuple[int, ExecuteTasks.TransformTasksExTypes.TransformFuncType]:
             index = context
             del context
@@ -352,26 +350,24 @@ def RemoveDuplicates(
         ):
             hash_map: dict[str, list[Path]] = {}
 
-            for filename, hash_value in zip(all_filenames, all_hashes):
+            for filename, hash_value in zip(all_filenames, all_hashes, strict=True):
                 assert isinstance(hash_value, str), hash_value
                 hash_map.setdefault(hash_value, []).append(filename)
 
-            for dup_filenames in hash_map.values():
-                if len(dup_filenames) > 1:
-                    duplicates.append(dup_filenames)
+            duplicates += [dup_filenames for dup_filenames in hash_map.values() if len(dup_filenames) > 1]
 
         if not duplicates:
             return
 
         with dm.Nested("Removing duplicates...") as duplicate_dm:
-            for index, dup_filenames in enumerate(duplicates):
+            for dup_index, dup_filenames in enumerate(duplicates):
                 with duplicate_dm.Nested(
-                    f"Removing duplicates of '{dup_filenames[0]}' ({index + 1} of {len(duplicates)})...",
+                    f"Removing duplicates of '{dup_filenames[0]}' ({dup_index + 1} of {len(duplicates)})...",
                     suffix="\n",
                 ) as this_dm:
-                    for index, filename in enumerate(dup_filenames[1:]):
+                    for filename_index, filename in enumerate(dup_filenames[1:]):
                         with this_dm.Nested(
-                            f"Removing '{filename}' ({index + 1} of {len(dup_filenames) - 1})..."
+                            f"Removing '{filename}' ({filename_index + 1} of {len(dup_filenames) - 1})..."
                         ):
                             if not dry_run:
                                 filename.unlink()
@@ -402,7 +398,7 @@ def RemoveDuplicates(
 # ----------------------------------------------------------------------
 class _Token:
     AUTHORIZE_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-    TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"  # noqa: S105
 
     # ----------------------------------------------------------------------
     @classmethod
@@ -417,7 +413,7 @@ class _Token:
         *,
         force_oauth: bool,
     ) -> "_Token":
-        os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+        os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"  # noqa: S105
 
         oauth = OAuth2Session(
             client_id,
@@ -442,9 +438,9 @@ class _Token:
                 ssl_pem_filename=ssl_pem_filename,
             )
 
-            auth_url, state = oauth.authorization_url(
+            auth_url, _ = oauth.authorization_url(
                 cls.AUTHORIZE_URL,
-                access_token="offline",
+                access_token="offline",  # noqa: S106
                 prompt="select_account",
             )
 
@@ -541,13 +537,13 @@ def _GetFileInfos(
         while to_search:
             display_name, url = to_search.pop()
 
-            num_files = 0
+            num_files = [0]
 
             with files_dm.Nested(
                 f"Searching in '{display_name}'...",
-                lambda: inflect.no("file", num_files),
+                lambda num_files=num_files: inflect.no("file", num_files[0]),
             ) as search_dm:
-                response = requests.get(url, headers=get_headers_func())
+                response = requests.get(url, headers=get_headers_func())  # noqa: S113
 
                 response.raise_for_status()
                 response = response.json()
@@ -561,12 +557,12 @@ def _GetFileInfos(
                             ),
                         )
                     elif "file" in item:
-                        search_dm.WriteVerbose(f"{num_files + 1}) {item['name']}\n")
+                        search_dm.WriteVerbose(f"{num_files[0] + 1}) {item['name']}\n")
 
                         files.append(item)
-                        num_files += 1
+                        num_files[0] += 1
                     else:
-                        assert False, item
+                        assert False, item  # noqa: B011, PT015
 
                 if "@odata.nextLink" in response:
                     to_search.append(
@@ -607,20 +603,20 @@ def _GetFilesToProcess(
 
         if pictures_subdir is not None:
             file_processors["image"] = FileProcessorInfo(
-                set([".jpg", ".heic"]),
+                {".jpg", ".heic"},
                 output_dir / pictures_subdir / output_dir_template,
             )
 
         if videos_subdir is not None:
             file_processors["video"] = FileProcessorInfo(
-                set([".avi", ".mp4"]),
+                {".avi", ".mp4"},
                 output_dir / videos_subdir / output_dir_template,
             )
 
-        ignore_file_types: set[str] = set([".thm"])
+        ignore_file_types: set[str] = {".thm"}
 
         for file_info in file_infos:
-            ext = os.path.splitext(file_info["name"])[1]
+            ext = os.path.splitext(file_info["name"])[1]  # noqa: PTH122
             if ext in ignore_file_types:
                 continue
 
@@ -674,7 +670,7 @@ def _ProcessFiles(
 
     # ----------------------------------------------------------------------
     def Prepare(
-        context: Any,
+        context: int,
         on_simple_status_func: Callable[[str], None],
     ) -> tuple[int, ExecuteTasks.TransformTasksExTypes.TransformFuncType]:
         on_simple_status_func("Initializing...")
@@ -701,7 +697,7 @@ def _ProcessFiles(
         else:
             headers = get_headers_func()
 
-        response = requests.get(
+        response = requests.get(  # noqa: S113
             url,
             headers=headers,
             stream=True,
