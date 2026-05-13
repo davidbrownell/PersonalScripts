@@ -16,6 +16,6 @@ github_repo_name: PersonalScripts
 github_username: davidbrownell
 license: MIT
 project_name: PersonalScripts
-python_package_name: PersonalScripts
+python_package_name: personalscripts
 python_versions: 3.10, 3.11, 3.12, 3.13
 sign_artifacts_question: false
