@@ -599,37 +599,34 @@ def _GetFilesToProcess(
 
         # ----------------------------------------------------------------------
 
-        file_processors: dict[str, FileProcessorInfo] = {}
+        file_processors: list[FileProcessorInfo] = []
 
         if pictures_subdir is not None:
-            file_processors["image"] = FileProcessorInfo(
-                {".jpg", ".heic"},
-                output_dir / pictures_subdir / output_dir_template,
+            file_processors.append(
+                FileProcessorInfo(
+                    {".jpg", ".heic", ".png"},
+                    output_dir / pictures_subdir / output_dir_template,
+                ),
             )
 
         if videos_subdir is not None:
-            file_processors["video"] = FileProcessorInfo(
-                {".avi", ".mp4"},
-                output_dir / videos_subdir / output_dir_template,
+            file_processors.append(
+                FileProcessorInfo(
+                    {".avi", ".mp4", ".mov"},
+                    output_dir / videos_subdir / output_dir_template,
+                ),
             )
 
         ignore_file_types: set[str] = {".thm"}
 
         for file_info in file_infos:
-            ext = os.path.splitext(file_info["name"])[1]  # noqa: PTH122
+            ext = os.path.splitext(file_info["name"])[1].lower()  # noqa: PTH122
             if ext in ignore_file_types:
                 continue
 
             file_processor: FileProcessorInfo | None = None
 
-            for (
-                file_processor_attribute_name,
-                potential_file_processor,
-            ) in file_processors.items():
-                if file_processor_attribute_name in file_info:
-                    file_processor = potential_file_processor
-                    break
-
+            for potential_file_processor in file_processors:
                 if ext in potential_file_processor.file_types:
                     file_processor = potential_file_processor
                     break
