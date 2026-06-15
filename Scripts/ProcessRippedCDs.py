@@ -624,7 +624,7 @@ def _ArchiveContent(
             archive_result: _InvokeResult | None = None
 
             with archive_dm.Nested(
-                "Processing '{}' ({} of {})...".format(album.name, album_index, len(albums)),
+                "Processing '{}' ({} of {})...".format(album.name, album_index + 1, len(albums)),
                 lambda: GetInvokeResultSuffix(cast("_InvokeResult", archive_result)),  # noqa: B023
                 suffix=lambda: "\n" if archive_result == _InvokeResult.Success else None,  # noqa: B023
             ) as album_archive_dm:
