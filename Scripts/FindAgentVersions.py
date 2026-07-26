@@ -16,6 +16,7 @@ from Impl.RepositoryUtils import FindRepositoryRoots
 class AgentVersionInfo:
     """Represents a found AGENTS.md version with its metadata."""
 
+    name: str
     path: Path
     version: str = field(default="<unknown>")
 
@@ -50,7 +51,7 @@ def EntryPoint(
         typer.Option("--debug", help="Write debug information to the terminal."),
     ] = False,
 ) -> None:
-    """Given a directory, find all AGENTS.md files and display their version."""
+    """Given a directory, find all agent files and display their version."""
 
     with DoneManager.CreateCommandLine(
         flags=DoneManagerFlags.Create(verbose=verbose, debug=debug),
@@ -59,18 +60,21 @@ def EntryPoint(
 
         with dm.Nested("Searching for AGENTS.md files...") as search_dm:
             for repo_root in FindRepositoryRoots(directory):
-                agents_file = repo_root / "AGENTS.md"
+                for potential_agents_file in ["AGENTS.md", "CLAUDE.md"]:
+                    agents_file = repo_root / potential_agents_file
 
-                if not agents_file.is_file():
-                    continue
+                    if not agents_file.is_file():
+                        continue
 
-                version = _ExtractVersionFromAgentsFile(agents_file)
-                relative_path = agents_file.parent.relative_to(directory)
+                    version = _ExtractVersionFromAgentsFile(agents_file)
+                    relative_path = agents_file.parent.relative_to(directory)
 
-                results.append(AgentVersionInfo(path=relative_path, version=version))
+                    results.append(
+                        AgentVersionInfo(name=potential_agents_file, path=relative_path, version=version)
+                    )
 
-                if search_dm.is_verbose:
-                    search_dm.WriteVerbose(f"Found: {relative_path} (Version: {version})\n")
+                    if search_dm.is_verbose:
+                        search_dm.WriteVerbose(f"Found: {relative_path} (Version: {version})\n")
 
         if not results:
             dm.WriteLine("No AGENTS.md files found.\n")
@@ -103,13 +107,17 @@ def _DisplayTable(results: list[AgentVersionInfo], dm: DoneManager) -> None:
     """Display agent versions in a formatted table."""
 
     path_header = "Path"
+    name_header = "Name"
     version_header = "Version"
 
     path_width = max(len(path_header), max(len(str(r.path)) for r in results))  # noqa: PLW3301
+    name_width = max(len(name_header), max(len(r.name) for r in results))  # noqa: PLW3301
     version_width = max(len(version_header), max(len(r.version) for r in results))  # noqa: PLW3301
 
-    separator = f"+{'-' * (path_width + 2)}+{'-' * (version_width + 2)}+"
-    header = f"| {path_header:<{path_width}} | {version_header:<{version_width}} |"
+    separator = f"+{'-' * (path_width + 2)}+{'-' * (name_width + 2)}+{'-' * (version_width + 2)}+"
+    header = (
+        f"| {path_header:<{path_width}} | {name_header:<{name_width}} | {version_header:<{version_width}} |"
+    )
 
     dm.WriteLine("")
     dm.WriteLine(separator)
@@ -117,11 +125,11 @@ def _DisplayTable(results: list[AgentVersionInfo], dm: DoneManager) -> None:
     dm.WriteLine(separator)
 
     for result in results:
-        row = f"| {result.path!s:<{path_width}} | {result.version:<{version_width}} |"
+        row = f"| {result.path!s:<{path_width}} | {result.name:<{name_width}} | {result.version:<{version_width}} |"
         dm.WriteLine(row)
 
     dm.WriteLine(separator)
-    dm.WriteLine(f"\nFound {len(results)} AGENTS.md file(s).\n")
+    dm.WriteLine(f"\nFound {len(results)} agent file(s).\n")
 
 
 # ----------------------------------------------------------------------
