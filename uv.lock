@@ -109,7 +109,7 @@ wheels = [
 
 [[package]]
 name = "dbrownell-common"
-version = "0.16.0"
+version = "0.17.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "inflect" },
@@ -117,9 +117,9 @@ dependencies = [
     { name = "typer" },
     { name = "typer-config" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/e1/3b95222dd52b010b62b7e93d7f7983acf1fe0d1ccb07a3185c9ea9b366ee/dbrownell_common-0.16.0.tar.gz", hash = "sha256:45a46ede7e575e28ba906b5489a671092f429b46b998a5b10d06c09523a20c2f", size = 96133, upload-time = "2025-07-21T14:12:16.596Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/6f/f15899481fbc438611e790b84a53d11b41c5af623e216e71c2d6e02afd9c/dbrownell_common-0.17.4.tar.gz", hash = "sha256:c3397d9b90b96d723559d23db67ae50e043c95167fe23016dd75565b773b3d15", size = 37217, upload-time = "2026-09-07T16:11:20.648Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/54/63aed9214a1e1fdfd84265a7eaef5feed6d7da24fc78ff131fe2f6f825e0/dbrownell_common-0.16.0-py3-none-any.whl", hash = "sha256:5fc4b0f584aad21d5ccc1ca89415803f3f429407f6518d6b0212b44663a29711", size = 43409, upload-time = "2025-07-21T14:12:15.274Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/ef/547dac52c1d008c3a1beceb37cde59dfed9458db1a25ed15bc93ccda6392/dbrownell_common-0.17.4-py3-none-any.whl", hash = "sha256:a357fb7098f289acff6b35a9b63b543bc9a0087c592bf115a5ec22b3b46e2cae", size = 43430, upload-time = "2026-09-07T16:11:19.555Z" },
 ]
 
 [[package]]
