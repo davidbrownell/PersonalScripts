@@ -6,28 +6,22 @@ a pull request, waits for its builds to pass, merges it, and waits for the mainl
 complete.
 """
 
-import json
-import os
-import shutil
 import textwrap
-import threading
-import time
 import tomllib
 
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 
-from dbrownell_Common import ExecuteTasks, PathEx, SubprocessEx, TextwrapEx
+from dbrownell_Common import PathEx, TextwrapEx
 from dbrownell_Common.Streams.DoneManager import DoneManager, Flags as DoneManagerFlags
 
-from Impl.RepositoryUtils import FindRepositoryRoots
+from Impl import PullRequestWorkflow
+from Impl.RepositoryUtils import ExecuteInParallel, FindRepositoryRoots
 
 
 # ----------------------------------------------------------------------
@@ -36,15 +30,7 @@ COMMIT_MESSAGE = "🔒️ [+security] Upgraded dependencies based on `uv audit`"
 
 
 # ----------------------------------------------------------------------
-_POLL_INTERVAL_SECONDS = 30
-
-# `main` is typically configured to require that a branch be up to date before it can be merged,
-# so a merge can legitimately fail once when mainline advances while the checks are running.
-_MAX_MERGE_ATTEMPTS = 2
-
-# `SubprocessEx.Run` merges stderr into stdout, so the update notification that `gh` writes to
-# stderr would otherwise corrupt the JSON written by `gh ... --json`.
-_ENVIRONMENT_OVERRIDES: dict[str, str] = {"GH_NO_UPDATE_NOTIFIER": "1"}
+_BRANCH_NAME_PREFIX = "uv-audit"
 
 
 # ----------------------------------------------------------------------
@@ -101,7 +87,7 @@ def Execute(
         result = _AuditRepository(
             dm,
             repository,
-            branch_name=branch_name or _CreateBranchName(),
+            branch_name=branch_name or PullRequestWorkflow.CreateBranchName(_BRANCH_NAME_PREFIX),
             timeout_minutes=timeout_minutes,
             # The activity is already visible in the output written to `dm`.
             on_activity_func=lambda _: None,
@@ -178,85 +164,38 @@ def ExecuteTree(
             return
 
         # Every repository shares a branch name so that the pull requests are easy to correlate.
-        branch_name = branch_name or _CreateBranchName()
-
-        results: dict[Path, _AuditResult] = {}
-        results_lock = threading.Lock()
+        branch_name = branch_name or PullRequestWorkflow.CreateBranchName(_BRANCH_NAME_PREFIX)
 
         # ----------------------------------------------------------------------
-        def Init(context: Path) -> tuple[Path, ExecuteTasks.ExecuteTasksTypes.PrepareFuncType]:
-            repository = context
-            del context
+        def Audit(
+            repository_dm: DoneManager,
+            repository: Path,
+            on_activity_func: Callable[[Enum], None],
+        ) -> tuple["_AuditResult | None", str | None]:
+            result = _AuditRepository(
+                repository_dm,
+                repository,
+                branch_name=branch_name,
+                timeout_minutes=timeout_minutes,
+                on_activity_func=on_activity_func,
+                dry_run=dry_run,
+                no_merge=no_merge,
+            )
 
-            log_filename = PathEx.CreateTempFileName(".log")
+            if result is None:
+                return None, "no vulnerabilities"
 
-            # ----------------------------------------------------------------------
-            def Prepare(
-                on_simple_status_func: Callable[[str], None],  # noqa: ARG001
-            ) -> tuple[int, ExecuteTasks.ExecuteTasksTypes.ExecuteFuncType]:
-                activities = list(_AuditActivity)
-
-                # ----------------------------------------------------------------------
-                def Audit(
-                    status: ExecuteTasks.Status,
-                ) -> tuple[int, str | None]:
-                    # ----------------------------------------------------------------------
-                    def OnActivity(activity: _AuditActivity) -> None:
-                        # The step is derived from the activity rather than counted, as the
-                        # activities that are skipped vary by repository and by option.
-                        status.OnProgress(activities.index(activity), activity.value)
-
-                    # ----------------------------------------------------------------------
-
-                    # Each repository writes to its own log file, as the output of concurrent
-                    # audits would otherwise be interleaved on the terminal.
-                    with (
-                        log_filename.open("w", encoding="utf-8") as f,
-                        DoneManager.Create(
-                            f,
-                            "Auditing '{}'...".format(repository),
-                            flags=dm.flags,
-                        ) as repository_dm,
-                    ):
-                        result = _AuditRepository(
-                            repository_dm,
-                            repository,
-                            branch_name=branch_name,
-                            timeout_minutes=timeout_minutes,
-                            on_activity_func=OnActivity,
-                            dry_run=dry_run,
-                            no_merge=no_merge,
-                        )
-
-                        if result is None:
-                            return repository_dm.result, "no vulnerabilities"
-
-                        with results_lock:
-                            results[repository] = result
-
-                        return repository_dm.result, "{} upgraded".format(len(result.upgrades))
-
-                # ----------------------------------------------------------------------
-
-                return len(activities), Audit
-
-            # ----------------------------------------------------------------------
-
-            return log_filename, Prepare
+            return result, "{} upgraded".format(len(result.upgrades))
 
         # ----------------------------------------------------------------------
 
-        ExecuteTasks.ExecuteTasks(
+        results = ExecuteInParallel(
             dm,
             "Auditing",
-            [
-                ExecuteTasks.TaskData(
-                    "Auditing '{}'".format(repository.relative_to(root)),
-                    repository,
-                )
-                for repository in repositories
-            ],
-            Init,
+            repositories,
+            _ACTIVITIES,
+            Audit,
+            display_name_func=lambda repository: str(repository.relative_to(root)),
             max_num_threads=max_num_threads,
         )
 
@@ -274,17 +213,15 @@ def ExecuteTree(
 # |
 # ----------------------------------------------------------------------
 class _AuditActivity(Enum):
-    """Activities performed by `_AuditRepository`, declared in the order that they are performed."""
+    """Activities performed by `_AuditRepository` before the changes are shepherded to mainline."""
 
     ValidatingRepository = "Validating the repository"
     AuditingDependencies = "Auditing the dependencies"
     UpgradingPackages = "Upgrading the packages"
-    CommittingAndPushing = "Committing and pushing the upgrades"
-    CreatingPullRequest = "Creating the pull request"
-    WaitingForPullRequestChecks = "Waiting for the pull request checks"
-    MergingPullRequest = "Merging the pull request"
-    WaitingForMainlineBuilds = "Waiting for the mainline builds"
-    UpdatingLocalRepository = "Updating the local repository"
+
+
+# ----------------------------------------------------------------------
+_ACTIVITIES: list[Enum] = [*_AuditActivity, *PullRequestWorkflow.Activity]
 
 
 # ----------------------------------------------------------------------
@@ -313,27 +250,13 @@ class _PackageUpgrade:
 
 # ----------------------------------------------------------------------
 @dataclass
-class _RepositoryInfo:
-    """Repository state needed to drive the pull request workflow."""
-
-    # The branch (or commit, when the repository is in a detached HEAD state) that was checked out
-    # before the audit began.
-    original_branch: str
-
-    default_branch: str
-    has_workflows: bool
-
-
-# ----------------------------------------------------------------------
-@dataclass
 class _AuditResult:
     """The outcome of auditing a single repository."""
 
     vulnerabilities: list[_Vulnerability]
     upgrades: list[_PackageUpgrade]
 
-    pull_request_url: str | None = field(default=None)
-    merge_commit: str | None = field(default=None)
+    workflow_result: PullRequestWorkflow.WorkflowResult | None = field(default=None)
 
     warnings: list[str] = field(default_factory=list)
 
@@ -349,7 +272,7 @@ def _AuditRepository(
     *,
     branch_name: str,
     timeout_minutes: int,
-    on_activity_func: Callable[[_AuditActivity], None],
+    on_activity_func: Callable[[_AuditActivity | PullRequestWorkflow.Activity], None],
     dry_run: bool = False,
     no_merge: bool = False,
 ) -> _AuditResult | None:
@@ -364,7 +287,7 @@ def _AuditRepository(
     on_activity_func(_AuditActivity.ValidatingRepository)
     repository_info = _Preflight(dm, repository)
 
-    with _RestoreBranch(dm, repository, repository_info.original_branch):
+    with PullRequestWorkflow.RestoreBranch(dm, repository, repository_info.original_branch):
         on_activity_func(_AuditActivity.AuditingDependencies)
 
         with dm.Nested("Auditing the dependencies...") as audit_dm:
@@ -387,91 +310,50 @@ def _AuditRepository(
             result.warnings.append("'--dry-run' was specified; 'uv.lock' was restored.")
             return result
 
-        on_activity_func(_AuditActivity.CommittingAndPushing)
-        _CommitAndPush(dm, repository, branch_name)
-
-        on_activity_func(_AuditActivity.CreatingPullRequest)
-        result.pull_request_url = _CreatePullRequest(dm, repository, repository_info.default_branch, result)
-        pull_request_id = result.pull_request_url.rsplit("/", 1)[-1]
-
-        if repository_info.has_workflows:
-            on_activity_func(_AuditActivity.WaitingForPullRequestChecks)
-            _WaitForChecks(dm, repository, pull_request_id, timeout_minutes=timeout_minutes)
-
-        if no_merge:
-            result.warnings.append("'--no-merge' was specified; the pull request was not merged.")
-            return result
-
-        on_activity_func(_AuditActivity.MergingPullRequest)
-
-        result.merge_commit = _Merge(
+        result.workflow_result = PullRequestWorkflow.ShepherdChanges(
             dm,
             repository,
-            pull_request_id,
+            repository_info,
+            branch_name=branch_name,
+            commit_message=COMMIT_MESSAGE,
+            pull_request_body=_CreatePullRequestBody(result),
+            filenames=["uv.lock"],
             timeout_minutes=timeout_minutes,
-            wait_for_checks=repository_info.has_workflows,
+            on_activity_func=on_activity_func,
+            no_merge=no_merge,
         )
-
-        if repository_info.has_workflows:
-            on_activity_func(_AuditActivity.WaitingForMainlineBuilds)
-            _WaitForWorkflowRuns(dm, repository, result.merge_commit, timeout_minutes=timeout_minutes)
-
-        on_activity_func(_AuditActivity.UpdatingLocalRepository)
-        _SyncLocalRepository(dm, repository, repository_info.default_branch, warnings=result.warnings)
 
         return result
 
 
 # ----------------------------------------------------------------------
-def _CreateBranchName() -> str:
-    """Create a branch name that is unique to this invocation."""
-
-    return "uv-audit-{}".format(datetime.now(UTC).strftime("%Y%m%d-%H%M%S"))
-
-
-# ----------------------------------------------------------------------
-def _Preflight(dm: DoneManager, repository: Path) -> _RepositoryInfo:
+def _Preflight(dm: DoneManager, repository: Path) -> PullRequestWorkflow.RepositoryInfo:
     """Validate the environment and repository state and return information about the repository."""
 
     with dm.Nested("Validating the repository...") as preflight_dm:
-        for tool_name in ["git", "gh", "uv"]:
-            if shutil.which(tool_name) is None:
-                msg = "'{}' was not found on the path.".format(tool_name)
-                raise Exception(msg)
+        PullRequestWorkflow.EnsureTools(["git", "gh", "uv"])
 
         for filename in ["pyproject.toml", "uv.lock"]:
             PathEx.EnsureFile(repository / filename)
 
         # Unrelated local changes would otherwise be swept into the commit created below.
-        if _Run(preflight_dm, "git status --porcelain", repository).strip():
+        if PullRequestWorkflow.HasChanges(preflight_dm, repository):
             msg = "'{}' has uncommitted changes.".format(repository)
             raise Exception(msg)
 
-        # `git symbolic-ref` fails when the repository is in a detached HEAD state, which is
-        # restored by commit rather than by name.
-        symbolic_ref_result = _RunRaw(preflight_dm, "git symbolic-ref --quiet --short HEAD", repository)
+        repository_info = PullRequestWorkflow.GetRepositoryInfo(preflight_dm, repository)
 
-        original_branch = (
-            symbolic_ref_result.output.strip()
-            if symbolic_ref_result.returncode == 0
-            else _Run(preflight_dm, "git rev-parse HEAD", repository).strip()
+        PullRequestWorkflow.Run(preflight_dm, "git fetch origin --force --tags --prune", repository)
+
+        PullRequestWorkflow.Run(
+            preflight_dm,
+            "git checkout {}".format(repository_info.default_branch),
+            repository,
         )
 
-        default_branch = _RunJson(preflight_dm, "gh repo view --json defaultBranchRef", repository)[
-            "defaultBranchRef"
-        ]["name"]
+        PullRequestWorkflow.Run(preflight_dm, "git pull --ff-only", repository)
 
-        _Run(preflight_dm, "git fetch origin --force --tags --prune", repository)
-        _Run(preflight_dm, "git checkout {}".format(default_branch), repository)
-        _Run(preflight_dm, "git pull --ff-only", repository)
-
-        workflows_path = repository / ".github" / "workflows"
-
-        return _RepositoryInfo(
-            original_branch=original_branch,
-            default_branch=default_branch,
-            has_workflows=workflows_path.is_dir() and any(workflows_path.glob("*.y*ml")),
-        )
+        return repository_info
 
 
 # ----------------------------------------------------------------------
@@ -487,10 +369,10 @@ def _RunAudit(dm: DoneManager, repository: Path, *, frozen: bool) -> list[_Vulne
 
     # `uv audit` exits with an error code when it finds vulnerabilities, so the output is the only
     # reliable indication of success.
-    result = _RunRaw(dm, command_line, repository)
+    result = PullRequestWorkflow.RunRaw(dm, command_line, repository)
 
     try:
-        content = _ExtractJson(result.output)
+        content = PullRequestWorkflow.ExtractJson(result.output)
     except ValueError:
         result.RaiseOnError()
         raise
@@ -528,7 +410,7 @@ def _Upgrade(
     with dm.Nested(
         "Upgrading {}...".format(", ".join("'{}'".format(name) for name in original_versions)),
     ) as upgrade_dm:
-        _Run(
+        PullRequestWorkflow.Run(
             upgrade_dm,
             "uv lock {}".format(
                 " ".join("--upgrade-package {}".format(name) for name in original_versions),
@@ -536,7 +418,7 @@ def _Upgrade(
             repository,
         )
 
-        if not _Run(upgrade_dm, "git status --porcelain -- uv.lock", repository).strip():
+        if not PullRequestWorkflow.HasChanges(upgrade_dm, repository, "uv.lock"):
             msg = _CreateVulnerabilityMessage(
                 "'uv.lock' was not changed, which means that no fix has been published or that a "
                 "'pyproject.toml' constraint is preventing the fix for:",
@@ -551,7 +433,7 @@ def _Upgrade(
         ]
 
         if remaining:
-            _Run(upgrade_dm, "git checkout -- uv.lock", repository)
+            PullRequestWorkflow.Run(upgrade_dm, "git checkout -- uv.lock", repository)
 
             msg = _CreateVulnerabilityMessage(
                 "The following vulnerabilities remain after the upgrade, which means that a "
@@ -563,7 +445,7 @@ def _Upgrade(
         locked_versions = _GetLockedVersions(repository / "uv.lock", original_versions.keys())
 
         if restore:
-            _Run(upgrade_dm, "git checkout -- uv.lock", repository)
+            PullRequestWorkflow.Run(upgrade_dm, "git checkout -- uv.lock", repository)
 
         return [
             _PackageUpgrade(
@@ -578,233 +460,6 @@ def _Upgrade(
             )
             for name, version in original_versions.items()
         ]
-
-
-# ----------------------------------------------------------------------
-def _CommitAndPush(dm: DoneManager, repository: Path, branch_name: str) -> None:
-    """Commit the updated `uv.lock` on a new branch and push it."""
-
-    with dm.Nested("Committing and pushing '{}'...".format(branch_name)) as commit_dm:
-        _Run(commit_dm, "git checkout -b {}".format(branch_name), repository)
-        _Run(commit_dm, "git add uv.lock", repository)
-
-        # The commit message contains backticks, which a POSIX shell would interpret as command
-        # substitution; a file keeps the message byte-exact on every platform.
-        with _TemporaryTextFile(COMMIT_MESSAGE + "\n") as message_filename:
-            _Run(commit_dm, 'git commit --file "{}"'.format(message_filename), repository)
-
-        _Run(commit_dm, "git push --set-upstream origin {}".format(branch_name), repository)
-
-
-# ----------------------------------------------------------------------
-def _CreatePullRequest(
-    dm: DoneManager,
-    repository: Path,
-    default_branch: str,
-    result: _AuditResult,
-) -> str:
-    """Create the pull request and return its url."""
-
-    with dm.Nested("Creating the pull request...") as pr_dm:
-        # '--fill' takes the title from the commit, which avoids passing the backticks in the
-        # commit message through a shell.
-        with _TemporaryTextFile(_CreatePullRequestBody(result)) as body_filename:
-            output = _Run(
-                pr_dm,
-                'gh pr create --base {} --fill --body-file "{}"'.format(default_branch, body_filename),
-                repository,
-            )
-
-        for line in reversed(output.splitlines()):
-            if line.startswith("https://"):
-                pr_dm.WriteLine("{}\n".format(line))
-                return line
-
-        msg = "A pull request url could not be extracted from:\n{}".format(output)
-        raise Exception(msg)
-
-
-# ----------------------------------------------------------------------
-def _WaitForChecks(
-    dm: DoneManager,
-    repository: Path,
-    pull_request_id: str,
-    *,
-    timeout_minutes: int,
-) -> None:
-    """Wait for the pull request's checks to complete, raising when any of them do not pass."""
-
-    with dm.Nested("Waiting for the pull request checks...") as checks_dm:
-        # ----------------------------------------------------------------------
-        def Poll() -> list[dict[str, Any]] | None:
-            # `gh pr checks` exits with an error code when checks are pending or failing and writes
-            # a diagnostic rather than JSON when no checks have been created yet.
-            result = _RunRaw(
-                checks_dm,
-                "gh pr checks {} --json name,bucket,link".format(pull_request_id),
-                repository,
-            )
-
-            try:
-                checks = _ExtractJson(result.output)
-            except ValueError:
-                return None
-
-            if any(check["bucket"] == "pending" for check in checks):
-                return None
-
-            return checks
-
-        # ----------------------------------------------------------------------
-
-        checks = _PollUntil(checks_dm, "The checks", Poll, timeout_minutes=timeout_minutes)
-
-        failures = [check for check in checks if check["bucket"] not in ["pass", "skipping"]]
-
-        if failures:
-            msg = "\n".join(
-                ["The following pull request checks did not pass:", ""]
-                + [
-                    "  - {} [{}] {}".format(check["name"], check["bucket"], check["link"])
-                    for check in failures
-                ]
-                + [""],
-            )
-            raise Exception(msg)
-
-
-# ----------------------------------------------------------------------
-def _Merge(
-    dm: DoneManager,
-    repository: Path,
-    pull_request_id: str,
-    *,
-    timeout_minutes: int,
-    wait_for_checks: bool,
-) -> str:
-    """Merge the pull request and return the merge commit."""
-
-    with dm.Nested("Merging the pull request...") as merge_dm:
-        for attempt in range(_MAX_MERGE_ATTEMPTS):
-            head_sha = _RunJson(
-                merge_dm,
-                "gh pr view {} --json headRefOid".format(pull_request_id),
-                repository,
-            )["headRefOid"]
-
-            # '--match-head-commit' ensures that the commit validated by the checks is the commit
-            # that is merged.
-            merge_result = _RunRaw(
-                merge_dm,
-                "gh pr merge {} --merge --delete-branch --match-head-commit {}".format(
-                    pull_request_id,
-                    head_sha,
-                ),
-                repository,
-            )
-
-            if merge_result.returncode == 0:
-                break
-
-            if attempt == _MAX_MERGE_ATTEMPTS - 1:
-                merge_result.RaiseOnError()
-
-            merge_dm.WriteWarning(
-                "The merge failed; the branch will be updated and the merge attempted again.\n{}".format(
-                    merge_result.output,
-                ),
-            )
-
-            _Run(merge_dm, "gh pr update-branch {}".format(pull_request_id), repository)
-
-            if wait_for_checks:
-                _WaitForChecks(merge_dm, repository, pull_request_id, timeout_minutes=timeout_minutes)
-
-        # ----------------------------------------------------------------------
-        def Poll() -> dict[str, Any] | None:
-            return _RunJson(
-                merge_dm,
-                "gh pr view {} --json mergeCommit".format(pull_request_id),
-                repository,
-            )["mergeCommit"]
-
-        # ----------------------------------------------------------------------
-
-        merge_commit = _PollUntil(
-            merge_dm,
-            "The merge commit",
-            Poll,
-            timeout_minutes=timeout_minutes,
-            interval_seconds=5,
-        )["oid"]
-
-        merge_dm.WriteLine("{}\n".format(merge_commit))
-
-        return merge_commit
-
-
-# ----------------------------------------------------------------------
-def _WaitForWorkflowRuns(
-    dm: DoneManager,
-    repository: Path,
-    commit: str,
-    *,
-    timeout_minutes: int,
-) -> None:
-    """Wait for the builds triggered by a commit to complete, raising when any of them fail."""
-
-    with dm.Nested("Waiting for the mainline builds...") as runs_dm:
-        # ----------------------------------------------------------------------
-        def Poll() -> list[dict[str, Any]] | None:
-            # The runs do not exist for the first few seconds after the merge.
-            runs = _RunJson(
-                runs_dm,
-                "gh run list --commit {} --json name,status,conclusion,url".format(commit),
-                repository,
-            )
-
-            if not runs or any(run["status"] != "completed" for run in runs):
-                return None
-
-            return runs
-
-        # ----------------------------------------------------------------------
-
-        runs = _PollUntil(runs_dm, "The mainline builds", Poll, timeout_minutes=timeout_minutes)
-
-        failures = [run for run in runs if run["conclusion"] not in ["success", "skipped"]]
-
-        if failures:
-            msg = "\n".join(
-                ["The following mainline builds did not pass:", ""]
-                + ["  - {} [{}] {}".format(run["name"], run["conclusion"], run["url"]) for run in failures]
-                + [""],
-            )
-            raise Exception(msg)
-
-
-# ----------------------------------------------------------------------
-def _SyncLocalRepository(
-    dm: DoneManager,
-    repository: Path,
-    default_branch: str,
-    *,
-    warnings: list[str],
-) -> None:
-    """Update the local repository so that it includes the merge commit and the release tag."""
-
-    with dm.Nested("Updating the local repository...") as sync_dm:
-        _Run(sync_dm, "git checkout {}".format(default_branch), repository)
-        _Run(sync_dm, "git fetch origin --tags --prune", repository)
-
-        # The release has already succeeded, so an inability to fast-forward (because mainline has
-        # advanced again) is not a failure of this script.
-        result = _RunRaw(sync_dm, "git pull --ff-only", repository)
-
-        if result.returncode != 0:
-            warnings.append(
-                "The local repository could not be updated:\n{}".format(result.output.rstrip()),
-            )
 
 
 # ----------------------------------------------------------------------
@@ -899,142 +554,11 @@ def _DisplaySummary(dm: DoneManager, result: _AuditResult) -> None:
 
     dm.WriteLine("\n" + _CreateUpgradeTable(result.upgrades) + "\n\n")
 
-    for description, value in [
-        ("Pull Request", result.pull_request_url),
-        ("Merge Commit", result.merge_commit),
-    ]:
-        if value is not None:
-            dm.WriteLine("{}: {}\n".format(description, value))
+    if result.workflow_result is not None:
+        PullRequestWorkflow.DisplayResult(dm, result.workflow_result)
 
     for warning in result.warnings:
         dm.WriteWarning(warning + "\n")
-
-
-# ----------------------------------------------------------------------
-def _PollUntil[PollResultT](
-    dm: DoneManager,
-    description: str,
-    poll_func: Callable[[], PollResultT | None],
-    *,
-    timeout_minutes: int,
-    interval_seconds: int = _POLL_INTERVAL_SECONDS,
-) -> PollResultT:
-    """Invoke `poll_func` until it returns a value or the timeout expires."""
-
-    expiration_time = time.monotonic() + timeout_minutes * 60
-
-    while True:
-        poll_result = poll_func()
-
-        if poll_result is not None:
-            dm.ClearStatus()
-            return poll_result
-
-        remaining_seconds = expiration_time - time.monotonic()
-
-        if remaining_seconds <= 0:
-            msg = "{} did not complete within {} minute(s).".format(description, timeout_minutes)
-            raise Exception(msg)
-
-        dm.WriteStatus(
-            "{} did not complete; {:.1f} minute(s) remaining.\n".format(
-                description,
-                remaining_seconds / 60,
-            ),
-        )
-
-        time.sleep(min(interval_seconds, remaining_seconds))
-
-
-# ----------------------------------------------------------------------
-@contextmanager
-def _RestoreBranch(dm: DoneManager, repository: Path, branch: str) -> Iterator[None]:
-    """Restore the branch that was checked out before the audit began.
-
-    `_Preflight` checks out the default branch, so the repository would otherwise be left on a
-    different branch than the one that the caller was using.
-    """
-
-    try:
-        yield
-    finally:
-        result = _RunRaw(dm, "git checkout {}".format(branch), repository)
-
-        if result.returncode != 0:
-            # Restoring the branch is a convenience, so a failure here must not mask the outcome of
-            # the audit itself.
-            dm.WriteWarning(
-                "'{}' could not be restored:\n{}\n".format(branch, result.output.rstrip()),
-            )
-
-
-# ----------------------------------------------------------------------
-@contextmanager
-def _TemporaryTextFile(content: str) -> Iterator[Path]:
-    """Write content to a temporary file, ensuring that the file is removed."""
-
-    filename = PathEx.CreateTempFileName()
-
-    filename.write_text(content, encoding="utf-8")
-
-    try:
-        yield filename
-    finally:
-        filename.unlink()
-
-
-# ----------------------------------------------------------------------
-def _RunRaw(dm: DoneManager, command_line: str, repository: Path) -> SubprocessEx.RunResult:
-    """Run a command within the repository and return its result."""
-
-    dm.WriteVerbose("Running '{}'...\n".format(command_line))
-
-    # `SubprocessEx.Run` replaces the environment rather than augmenting it.
-    result = SubprocessEx.Run(
-        command_line,
-        cwd=repository,
-        env={**os.environ, **_ENVIRONMENT_OVERRIDES},
-    )
-
-    dm.WriteDebug("{}\n{}".format(result.returncode, result.output))
-
-    return result
-
-
-# ----------------------------------------------------------------------
-def _Run(dm: DoneManager, command_line: str, repository: Path) -> str:
-    """Run a command within the repository, raising on error."""
-
-    result = _RunRaw(dm, command_line, repository)
-    result.RaiseOnError()
-
-    return result.output
-
-
-# ----------------------------------------------------------------------
-def _RunJson(dm: DoneManager, command_line: str, repository: Path) -> Any:  # noqa: ANN401
-    """Run a command within the repository and parse its output as JSON."""
-
-    return _ExtractJson(_Run(dm, command_line, repository))
-
-
-# ----------------------------------------------------------------------
-def _ExtractJson(output: str) -> Any:  # noqa: ANN401
-    """Parse the JSON within command output, ignoring any diagnostics that precede it.
-
-    `SubprocessEx.Run` merges stderr into stdout, so a diagnostic written by an otherwise
-    successful command would prevent the output from being parsed.
-
-    Raises `ValueError` when the output does not contain JSON.
-    """
-
-    indexes = [index for index in [output.find("{"), output.find("[")] if index != -1]
-
-    if not indexes:
-        msg = "JSON content was not found in:\n{}".format(output)
-        raise ValueError(msg)
-
-    return json.loads(output[min(indexes) :])
 
 
 # ----------------------------------------------------------------------
