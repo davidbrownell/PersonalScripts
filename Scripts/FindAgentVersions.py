@@ -18,6 +18,7 @@ class AgentVersionInfo:
 
     name: str
     path: Path
+    header: str = field(default="")
     version: str = field(default="<unknown>")
 
 
@@ -66,15 +67,22 @@ def EntryPoint(
                     if not agents_file.is_file():
                         continue
 
-                    version = _ExtractVersionFromAgentsFile(agents_file)
+                    header, version = _ExtractVersionFromAgentsFile(agents_file)
                     relative_path = agents_file.parent.relative_to(directory)
 
                     results.append(
-                        AgentVersionInfo(name=potential_agents_file, path=relative_path, version=version)
+                        AgentVersionInfo(
+                            name=potential_agents_file,
+                            path=relative_path,
+                            header=header,
+                            version=version,
+                        )
                     )
 
                     if search_dm.is_verbose:
-                        search_dm.WriteVerbose(f"Found: {relative_path} (Version: {version})\n")
+                        search_dm.WriteVerbose(
+                            f"Found: {relative_path} (Header: {header or '<none>'}, Version: {version})\n"
+                        )
 
         if not results:
             dm.WriteLine("No AGENTS.md files found.\n")
@@ -84,49 +92,47 @@ def EntryPoint(
 
 
 # ----------------------------------------------------------------------
-def _ExtractVersionFromAgentsFile(agents_file: Path) -> str:
-    """Extract the version from HTML comments in AGENTS.md."""
+def _ExtractVersionFromAgentsFile(agents_file: Path) -> tuple[str, str]:
+    """Extract the optional header and version from HTML comments in AGENTS.md."""
 
     comment_block_regex = re.compile(r"<!--(.*?)-->", re.DOTALL)
-    version_regex = re.compile(r"version:\s*([^\s]+)", re.IGNORECASE)
+    version_regex = re.compile(r"\s*(.*?)\s*\bversion:\s*(\S+)", re.IGNORECASE)
 
     with agents_file.open("r", encoding="utf-8") as f:
         content = f.read()
 
     for comment_match in comment_block_regex.finditer(content):
         comment_content = comment_match.group(1)
-        version_match = version_regex.search(comment_content)
+        version_match = version_regex.match(comment_content)
         if version_match:
-            return version_match.group(1).strip()
+            return version_match.group(1), version_match.group(2)
 
-    return "<unknown>"
+    return "", "<unknown>"
 
 
 # ----------------------------------------------------------------------
 def _DisplayTable(results: list[AgentVersionInfo], dm: DoneManager) -> None:
     """Display agent versions in a formatted table."""
 
-    path_header = "Path"
-    name_header = "Name"
-    version_header = "Version"
+    headers = ["Path", "Name", "Header", "Version"]
+    rows = [[str(r.path), r.name, r.header, r.version] for r in results]
 
-    path_width = max(len(path_header), max(len(str(r.path)) for r in results))  # noqa: PLW3301
-    name_width = max(len(name_header), max(len(r.name) for r in results))  # noqa: PLW3301
-    version_width = max(len(version_header), max(len(r.version) for r in results))  # noqa: PLW3301
+    widths = [max(len(value) for value in column) for column in zip(headers, *rows, strict=True)]
 
-    separator = f"+{'-' * (path_width + 2)}+{'-' * (name_width + 2)}+{'-' * (version_width + 2)}+"
-    header = (
-        f"| {path_header:<{path_width}} | {name_header:<{name_width}} | {version_header:<{version_width}} |"
-    )
+    separator = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
+
+    def FormatRow(values: list[str]) -> str:
+        return (
+            "| " + " | ".join(f"{value:<{width}}" for value, width in zip(values, widths, strict=True)) + " |"
+        )
 
     dm.WriteLine("")
     dm.WriteLine(separator)
-    dm.WriteLine(header)
+    dm.WriteLine(FormatRow(headers))
     dm.WriteLine(separator)
 
-    for result in results:
-        row = f"| {result.path!s:<{path_width}} | {result.name:<{name_width}} | {result.version:<{version_width}} |"
-        dm.WriteLine(row)
+    for row in rows:
+        dm.WriteLine(FormatRow(row))
 
     dm.WriteLine(separator)
     dm.WriteLine(f"\nFound {len(results)} agent file(s).\n")
