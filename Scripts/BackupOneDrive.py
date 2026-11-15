@@ -604,7 +604,7 @@ def _GetFilesToProcess(
         if pictures_subdir is not None:
             file_processors.append(
                 FileProcessorInfo(
-                    {".jpg", ".heic", ".png"},
+                    {".jpg", ".jpeg", ".heic", ".png"},
                     output_dir / pictures_subdir / output_dir_template,
                 ),
             )
